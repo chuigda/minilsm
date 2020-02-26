@@ -592,6 +592,10 @@ mod test {
         assert!(level2.get("AAD", &mut cache_manager).is_none());
         assert!(level2.get("AAF", &mut cache_manager).is_none());
         assert!(level2.get("AAI", &mut cache_manager).is_none());
+        assert_eq!(level2.get("AAB", &mut cache_manager).unwrap(), "人在美国");
+        assert_eq!(level2.get("AAG", &mut cache_manager).unwrap(), "刚下飞机");
+        assert_eq!(level2.get("AAH", &mut cache_manager).unwrap(), "利益相关");
+        assert_eq!(level2.get("AAJ", &mut cache_manager).unwrap(), "手机怒答");
     }
 
     #[test]
