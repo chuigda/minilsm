@@ -170,16 +170,22 @@ impl<'a> LSMLevel<'a> {
             if let Some(KVPair(last_key, _)) = buffer.last() {
                 if *last_key == key {
                     let last_block_idx = last_block_idx.unwrap();
-                    if block_idx > last_block_idx {
-                        let _ = buffer.pop();
-                    } else {
-                        // Do nothing
-                    }
+                    assert!(block_idx > last_block_idx);
+                    buffer.pop();
+                    buffer.push(KVPair(key, value));
                 } else {
-                    // Do nothing
+                    if buffer.len() >= config.block_size {
+                        blocks_built.push(LSMBlock::create(
+                            &config.db_name,
+                            level, file_id_manager.allocate(),
+                            buffer.drain(0..config.block_size).collect()
+                        ));
+                    }
+                    buffer.push(KVPair(key, value));
                 }
+            } else {
+                buffer.push(KVPair(key, value));
             }
-            buffer.push(KVPair(key, value));
 
             last_block_idx.replace(block_idx);
             if let Some(KVPair(key, value)) = iters[block_idx].next() {
@@ -187,13 +193,6 @@ impl<'a> LSMLevel<'a> {
             }
         }
 
-        while buffer.len() >= config.block_size {
-            blocks_built.push(LSMBlock::create(
-                &config.db_name,
-                level, file_id_manager.allocate(),
-                buffer.drain(0..config.block_size).collect()
-            ));
-        }
         if !buffer.is_empty() {
             blocks_built.push(LSMBlock::create(
                 &config.db_name,

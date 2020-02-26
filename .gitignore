@@ -11,3 +11,10 @@ Cargo.lock
 
 # Build target
 target/*
+
+# Database files
+*.msst
+*.mfst
+
+# Intellij garbages
+.idea/*
