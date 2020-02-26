@@ -1,6 +1,6 @@
 use crate::block::{LSMBlock, LSMBlockIter, LSMBlockMeta};
 use crate::cache::LSMCacheManager;
-use crate::{KVPair, split2, LSMConfig, SPLIT_MARK};
+use crate::{KVPair, split2, LSMConfig, SPLIT_MARK, DELETION_MARK};
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -172,7 +172,9 @@ impl<'a> LSMLevel<'a> {
                     let last_block_idx = last_block_idx.unwrap();
                     assert!(block_idx > last_block_idx);
                     buffer.pop();
-                    buffer.push(KVPair(key, value));
+                    if value.as_str() != DELETION_MARK {
+                        buffer.push(KVPair(key, value));
+                    }
                 } else {
                     if buffer.len() >= config.block_size {
                         blocks_built.push(LSMBlock::create(
@@ -320,7 +322,7 @@ mod test {
     use crate::block::{LSMBlock, LSMBlockMeta};
     use crate::level::{LSMLevel, FileIdManager};
     use crate::cache::LSMCacheManager;
-    use crate::{KVPair, LSMConfig};
+    use crate::{KVPair, LSMConfig, DELETION_MARK};
 
     #[test]
     fn test_level1_lookup() {
@@ -543,6 +545,53 @@ mod test {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_merge_with_deletion() {
+        let lv1_block = LSMBlock::create("tdb5", 1, 1, vec![
+            kv_pair!("AAB", "人在美国"),
+            kv_pair!("AAC", DELETION_MARK),
+            kv_pair!("AAD", DELETION_MARK),
+            kv_pair!("AAF", DELETION_MARK),
+            kv_pair!("AAG", "刚下飞机"),
+            kv_pair!("AAH", "利益相关"),
+            kv_pair!("AAI", DELETION_MARK),
+            kv_pair!("AAJ", "手机怒答"),
+        ]);
+
+        let lv2_blocks = vec![
+            LSMBlock::create("tdb5", 2, 1, vec![
+                kv_pair!("AAA", "我们一再强调：你提到的有关媒体报道的内容有误，完全是别有用心"),
+                kv_pair!("AAB", "对於锤哥一再挑动开发数据库，我只能用一句古诗形容锤哥开发数据库的後果"),
+                kv_pair!("AAC", "「风萧萧兮易水寒，壮士一去兮不复还！」"),
+                kv_pair!("AAD", "锤哥开发数据库必定面对世人的侧目"),
+                kv_pair!("AAE", "锤哥不仅不以为耻反以为荣"),
+                kv_pair!("AAF", "「明明已经从山巅之城跌落，还浑然不觉，颐指气使」"),
+                kv_pair!("AAG", "这样的锤哥，能和中国相提并论吗！"),
+                kv_pair!("AAH", "对于一些触目惊心的事实，锤哥难道真的不知道吗？")
+            ]),
+            LSMBlock::create("tdb5", 2, 2, vec![
+                kv_pair!("AAI", "中国政府和中国人民坚决反对锤哥开发数据库的行为"),
+                kv_pair!("AAJ", "中方已就此向锤哥提出严正交涉和强烈抗议"),
+                kv_pair!("AAK", "中国一向秉持和平共处五项原则处理国与国关系"),
+                kv_pair!("AAL", "历来坚定奉行不干涉内政原则"),
+                kv_pair!("AAM", "主张各国根据自身国情选择发展道路"),
+                kv_pair!("AAN", "希望锤哥能以开放的心态和客观公正的态度对待中国"),
+                kv_pair!("AAO", "不要无中生有"),
+                kv_pair!("AAP", "锤哥罔顾事实、混淆是非、违反公理，玩弄双重标准")
+            ])
+        ];
+
+        let lsm_config = LSMConfig::testing("tdb5");
+        let mut cache_manager = LSMCacheManager::new(4);
+        let mut level2 = LSMLevel::with_blocks(2, lv2_blocks, &lsm_config, FileIdManager::new(32));
+        let _ = level2.merge_blocks(vec![lv1_block]);
+
+        assert!(level2.get("AAC", &mut cache_manager).is_none());
+        assert!(level2.get("AAD", &mut cache_manager).is_none());
+        assert!(level2.get("AAF", &mut cache_manager).is_none());
+        assert!(level2.get("AAI", &mut cache_manager).is_none());
     }
 
     #[test]

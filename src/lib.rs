@@ -175,11 +175,19 @@ impl<'a> LSM<'a> {
 
     pub fn get(&self, key: &str) -> Option<String> {
         if let Some(ret) = self.mut_table.get(key) {
-            return Some(ret.to_string());
+            return if ret == DELETION_MARK {
+                None
+            } else {
+                Some(ret.to_string())
+            }
         }
         for level in self.levels.iter() {
             if let Some(ret) = level.get(key, self.cache_manager.borrow_mut().deref_mut()) {
-                return Some(ret.to_string());
+                return if ret == DELETION_MARK {
+                    None
+                } else {
+                    Some(ret.to_string())
+                }
             }
         }
         None
@@ -222,6 +230,15 @@ impl<'a> LSM<'a> {
         }
 
         self.update_manifest();
+    }
+
+    pub fn delete(&mut self, key: &str) -> bool {
+        if let Some(value) = self.get(key) {
+            self.put(key, DELETION_MARK);
+            return true;
+        } else {
+            return false;
+        }
     }
 
     fn remove_files(files: Vec<LSMBlockMeta<'a>>) {
@@ -270,6 +287,40 @@ mod tests {
         for (&k, &v) in memds.iter() {
             eprintln!("DBG_LOG: expecting {} -> {}", k, v);
             assert_eq!(lsm.get(k).unwrap(), *v);
+        }
+    }
+
+    #[test]
+    fn deletion_test() {
+        let mut kvs = gen_kv("aaa", 512);
+        let mut rng = FakeRng::default();
+        kvs.shuffle(&mut rng);
+
+        let lsm_config = LSMConfig::testing("dl_test_db");
+        let mut lsm = LSM::new(lsm_config);
+        let mut memds = BTreeMap::new();
+        for KVPair(k, v) in kvs.iter() {
+            lsm.put(k, v);
+            memds.insert(k, v);
+        }
+
+        let mut kvs_1 = gen_kv("aaa", 512);
+        kvs_1.shuffle(&mut rng);
+        let mut removed = Vec::new();
+        for KVPair(k, v) in kvs_1.iter().take(128) {
+            assert!(lsm.delete(k));
+            memds.remove(k);
+
+            removed.push(k.to_string());
+        }
+
+        for (&k, &v) in memds.iter() {
+            eprintln!("DBG_LOG: expecting {} -> {}", k, v);
+            assert_eq!(lsm.get(k).unwrap(), *v);
+        }
+
+        for k in removed.iter() {
+            assert!(lsm.get(k).is_none())
         }
     }
 
